@@ -59,4 +59,4 @@ COPY . .
 EXPOSE 10000
 
 
-CMD ["sh", "-c", "gunicorn main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 0"]
+CMD ["sh", "-c", "gunicorn main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:10000 --workers 1 --threads 8 --timeout 0"]

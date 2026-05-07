@@ -1,21 +1,15 @@
 from fastapi import APIRouter, HTTPException, Depends
 from models import SoilData
 from typing import List
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select, col
-from database import get_session
 
 router = APIRouter()
 
 @router.get("/latest", response_model=SoilData)
-async def get_latest_soil_data(session: AsyncSession = Depends(get_session)):
+async def get_latest_soil_data():
     # Filter for non-zero NPK to avoid showing sensor errors
-    statement = select(SoilData).where(
-        (col(SoilData.nitrogen) > 0) | (col(SoilData.phosphorus) > 0) | (col(SoilData.potassium) > 0)
-    ).order_by(SoilData.timestamp.desc()).limit(1)
-    
-    result = await session.execute(statement)
-    result_obj = result.scalars().first()
+    result_obj = await SoilData.find(
+        {"$or": [{"nitrogen": {"$gt": 0}}, {"phosphorus": {"$gt": 0}}, {"potassium": {"$gt": 0}}]}
+    ).sort(-SoilData.timestamp).first_or_none()
     
     if result_obj:
         print(f"[DEBUG] Fetching latest soil data: {result_obj.nitrogen}, {result_obj.phosphorus}, {result_obj.potassium}")
@@ -29,9 +23,7 @@ async def get_latest_soil_data(session: AsyncSession = Depends(get_session)):
 
 @router.get("/history", response_model=List[SoilData])
 async def get_soil_history(
-    limit: int = 10,
-    session: AsyncSession = Depends(get_session)
+    limit: int = 10
 ):
-    statement = select(SoilData).order_by(SoilData.timestamp.desc()).limit(limit)
-    result = await session.execute(statement)
-    return result.scalars().all()
+    result = await SoilData.find().sort(-SoilData.timestamp).limit(limit).to_list()
+    return result

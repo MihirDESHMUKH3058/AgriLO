@@ -11,9 +11,6 @@ from schemas import soil as soil_schemas
 from services.soil_service import soil_service
 from services.disease_service import disease_service
 from dependencies import get_current_user
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select, col
-from database import get_session
 from utils.limiter import limiter
 
 router = APIRouter()
@@ -28,8 +25,7 @@ class DiseaseResponse(BaseModel):
 async def analyze_soil(
     request: Request,
     data: soil_schemas.SoilDataInput,
-    current_user: models.User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    current_user: models.User = Depends(get_current_user)
 ):
     # 1. Analyze Health & Problems
     status, health_score, problems = soil_service.analyze_health(data)
@@ -44,9 +40,7 @@ async def analyze_soil(
             confidence=health_score, 
             disease_detected=status
         )
-        session.add(new_scan)
-        await session.commit()
-        await session.refresh(new_scan)
+        await new_scan.insert()
         
         # Create AnalysisResult
         result_data = {
@@ -65,8 +59,7 @@ async def analyze_soil(
             scan_id=new_scan.id,
             result_data=result_data
         )
-        session.add(new_result)
-        await session.commit()
+        await new_result.insert()
         
     except Exception as e:
         print(f"DB Error: {e}")
@@ -88,8 +81,7 @@ async def analyze_soil(
 async def detect_disease(
     request: Request,
     file: UploadFile = File(...),
-    current_user: models.User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    current_user: models.User = Depends(get_current_user)
 ):
     # 1. Read and Save File
     contents = await file.read()
@@ -124,16 +116,13 @@ async def detect_disease(
             disease_detected=disease_name,
             confidence=confidence
         )
-        session.add(new_scan)
-        await session.commit()
-        await session.refresh(new_scan)
+        await new_scan.insert()
         
         new_result = models.AnalysisResult(
             scan_id=new_scan.id,
             result_data=treatment_info
         )
-        session.add(new_result)
-        await session.commit()
+        await new_result.insert()
     except Exception as e:
         print(f"DB Error: {e}")
 
@@ -152,16 +141,12 @@ async def detect_disease(
 @router.get("/history")
 async def get_analysis_history(
     limit: int = 10,
-    current_user: models.User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    current_user: models.User = Depends(get_current_user)
 ):
     # Fetch Scans (Leaf, Soil, Root)
-    statement = select(models.Scan).where(
-        col(models.Scan.user_id) == current_user.id
-    ).order_by(models.Scan.created_at.desc()).limit(limit)
-    
-    result = await session.execute(statement)
-    scans = result.scalars().all()
+    scans = await models.Scan.find(
+        models.Scan.user_id == current_user.id
+    ).sort(-models.Scan.created_at).limit(limit).to_list()
 
     history = []
     
@@ -182,13 +167,10 @@ async def get_analysis_history(
             item["image"] = scan.image_url or "https://source.unsplash.com/random/200x200?leaf"
             
             # Load extra data manually
-            res_stmt = select(models.AnalysisResult).where(models.AnalysisResult.scan_id == scan.id)
-            res_result = await session.execute(res_stmt)
-            analysis_res = res_result.scalars().first()
+            analysis_res = await models.AnalysisResult.find_one(models.AnalysisResult.scan_id == scan.id)
             
             if analysis_res:
                 res_data = analysis_res.result_data 
-                
                 item["severity"] = res_data.get("severity")
                 item["treatment"] = res_data
 
@@ -211,16 +193,12 @@ async def get_analysis_history(
 @router.get("/similar")
 async def get_similar_cases(
     disease: str,
-    limit: int = 5,
-    session: AsyncSession = Depends(get_session)
+    limit: int = 5
 ):
-    statement = select(models.Scan).where(
+    scans = await models.Scan.find(
         models.Scan.disease_detected == disease,
         models.Scan.scan_type == "leaf"
-    ).order_by(models.Scan.created_at.desc()).limit(limit)
-    
-    result = await session.execute(statement)
-    scans = result.scalars().all()
+    ).sort(-models.Scan.created_at).limit(limit).to_list()
 
     similar_cases = []
     for s in scans:

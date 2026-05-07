@@ -2,8 +2,6 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from dependencies import get_current_user
 import models
-from sqlalchemy.ext.asyncio import AsyncSession
-from database import get_session
 
 router = APIRouter()
 
@@ -14,8 +12,7 @@ class TicketRequest(BaseModel):
 @router.post("/ticket")
 async def create_ticket(
     ticket: TicketRequest,
-    current_user: models.User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    current_user: models.User = Depends(get_current_user)
 ):
     # Save to DB
     new_ticket = models.SupportTicket(
@@ -23,8 +20,6 @@ async def create_ticket(
         subject=ticket.subject,
         message=ticket.message
     )
-    session.add(new_ticket)
-    await session.commit()
-    await session.refresh(new_ticket)
+    await new_ticket.insert()
     
-    return {"status": "success", "message": "Ticket submitted successfully", "ticket_id": new_ticket.id}
+    return {"status": "success", "message": "Ticket submitted successfully", "ticket_id": str(new_ticket.id)}

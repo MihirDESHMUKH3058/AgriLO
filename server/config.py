@@ -9,7 +9,8 @@ class Settings(BaseSettings):
     """Application configuration settings."""
     
     # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./farming.db"
+    MONGODB_URL: str = "mongodb://localhost:27017"
+    MONGODB_DB_NAME: str = "agrilo_db"
 
     
     # Security

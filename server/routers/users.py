@@ -5,16 +5,13 @@ import models
 from schemas import auth as schemas
 from dependencies import get_current_active_user
 from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
-from database import get_session
 
 router = APIRouter()
 
 @router.put("/me", response_model=schemas.UserResponse)
 async def update_user_me(
     user_update: schemas.UserUpdate,
-    current_user: models.User = Depends(get_current_active_user),
-    session: AsyncSession = Depends(get_session)
+    current_user: models.User = Depends(get_current_active_user)
 ):
     """
     Update current user's profile and settings.
@@ -31,8 +28,6 @@ async def update_user_me(
         
     current_user.updated_at = datetime.utcnow()
     
-    session.add(current_user)
-    await session.commit()
-    await session.refresh(current_user)
+    await current_user.save()
     
     return current_user

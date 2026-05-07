@@ -7,8 +7,6 @@ import uuid
 import models
 from dependencies import get_current_user
 from services.root_service import root_service
-from sqlalchemy.ext.asyncio import AsyncSession
-from database import get_session
 
 router = APIRouter()
 
@@ -20,8 +18,7 @@ class RootResponse(BaseModel):
 @router.post("/analyze", response_model=RootResponse)
 async def analyze_root(
     file: UploadFile = File(...),
-    current_user: models.User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    current_user: models.User = Depends(get_current_user)
 ):
     contents = await file.read()
     
@@ -46,9 +43,7 @@ async def analyze_root(
             disease_detected=diagnosis,
             confidence=100.0 if diagnosis else 0.0 # Heuristic
         )
-        session.add(new_scan)
-        await session.commit()
-        await session.refresh(new_scan)
+        await new_scan.insert()
         
         # Save Result Details
         new_result = models.AnalysisResult(
@@ -59,8 +54,7 @@ async def analyze_root(
                 "symptoms": []
             }
         )
-        session.add(new_result)
-        await session.commit()
+        await new_result.insert()
     except Exception as e:
         print(f"DB Error: {e}")
 

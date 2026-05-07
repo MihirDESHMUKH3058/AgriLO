@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  server:
+    build: 
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "10000:10000"
+    environment:
+      - PORT=10000
+      - MQTT_BROKER=mosquitto
+      - MQTT_USE_TLS=false
+      - MQTT_USER=""
+      - MQTT_PASSWORD=""
+    # Uses the .env file in the server directory
+    env_file:
+      - ./server/.env
+    depends_on:
+      - mosquitto
+    restart: always
+
+  client:
+    build: 
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    restart: always
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./server/mosquitto_docker.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+    restart: always
+
+volumes:
+  mosquitto_data:

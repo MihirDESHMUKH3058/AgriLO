@@ -8,8 +8,8 @@ gunicorn==21.2.0
 python-multipart
 
 # Database
-sqlmodel==0.0.16
-aiosqlite
+motor
+beanie
 
 # Authentication
 python-jose[cryptography]
@@ -22,16 +22,16 @@ email-validator
 python-dotenv
 
 # AI/ML (STABLE SETUP)
-tensorflow==2.15.0
-keras==2.15.0
-tf_keras==2.15.1
+tensorflow
+keras
+tf_keras
 scikit-learn==1.8.0
 joblib
-tensorflow-model-optimization
+# tensorflow-model-optimization
 
 # Data Processing (FORCE modern versions)
-numpy==1.26.4
-pandas==2.2.2
+numpy
+pandas
 Pillow>=10.0.0
 
 # AI Chatbot

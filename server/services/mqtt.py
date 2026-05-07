@@ -4,17 +4,17 @@ import logging
 import ssl
 import time
 from config import settings
-from sqlmodel import create_engine, Session, SQLModel
 from datetime import datetime
-from models import SoilData
+from pymongo import MongoClient
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Sync Engine for MQTT Callbacks
-SYNC_DATABASE_URL = settings.DATABASE_URL.replace("+aiosqlite", "")
-engine = create_engine(SYNC_DATABASE_URL, echo=False)
+# Sync PyMongo Client for MQTT Callbacks (runs in separate thread)
+mongo_client = MongoClient(settings.MONGODB_URL)
+db = mongo_client[settings.MONGODB_DB_NAME]
+soil_collection = db["soil_data"]
 
 class MQTTService:
     def __init__(self):
@@ -60,26 +60,24 @@ class MQTTService:
             phosphorus = int(int(data.get("phosphorus", 0)) * settings.SOIL_RAW_SCALE)
             potassium = int(int(data.get("potassium", 0)) * settings.SOIL_RAW_SCALE)
             
-            soil_record = SoilData(
-                node_id=data.get("node_id", "unknown"),
-                nitrogen=nitrogen,
-                phosphorus=phosphorus,
-                potassium=potassium,
-                ph=float(data.get("ph", 7.0)),
-                moisture=float(data.get("moisture", 0.0)),
-                temperature=float(data.get("temperature", 0.0)),
-                ec=float(data.get("ec", 0.0)),
-                timestamp=datetime.utcnow()
-            )
-            
             # Simple validation: ignore if NPK are all 0
-            if soil_record.nitrogen == 0 and soil_record.phosphorus == 0 and soil_record.potassium == 0:
+            if nitrogen == 0 and phosphorus == 0 and potassium == 0:
                 return
 
-            with Session(engine) as session:
-                session.add(soil_record)
-                session.commit()
-                logger.info(f"Saved DB Record for node: {soil_record.node_id}")
+            doc = {
+                "node_id": data.get("node_id", "unknown"),
+                "nitrogen": nitrogen,
+                "phosphorus": phosphorus,
+                "potassium": potassium,
+                "ph": float(data.get("ph", 7.0)),
+                "moisture": float(data.get("moisture", 0.0)),
+                "temperature": float(data.get("temperature", 0.0)),
+                "ec": float(data.get("ec", 0.0)),
+                "timestamp": datetime.utcnow()
+            }
+            
+            soil_collection.insert_one(doc)
+            logger.info(f"Saved DB Record for node: {doc['node_id']}")
 
         except Exception as e:
             logger.error(f"MQTT process error: {e}")
@@ -95,7 +93,5 @@ class MQTTService:
     def stop(self):
         self.client.loop_stop()
         self.client.disconnect()
-
-mqtt_service = MQTTService()
 
 mqtt_service = MQTTService()

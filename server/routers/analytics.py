@@ -2,9 +2,6 @@ from fastapi import APIRouter, Depends
 from dependencies import get_current_user
 import models
 from collections import Counter
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select, col, func
-from database import get_session
 from services.soil_service import soil_service
 from schemas.soil import SoilDataInput
 
@@ -12,16 +9,13 @@ router = APIRouter()
 
 @router.get("/summary")
 async def get_analytics_summary(
-    current_user: models.User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    current_user: models.User = Depends(get_current_user)
 ):
     # 1. Soil Trends (Priority: Hardware Sensors, Fallback: Manual Scans)
     # Fetch latest 20 valid hardware sensor records
-    stmt_hw = select(models.SoilData).where(
-        (col(models.SoilData.nitrogen) > 0) | (col(models.SoilData.phosphorus) > 0) | (col(models.SoilData.potassium) > 0)
-    ).order_by(models.SoilData.timestamp.desc()).limit(20)
-    result_hw = await session.execute(stmt_hw)
-    hw_data = result_hw.scalars().all()
+    hw_data = await models.SoilData.find(
+        {"$or": [{"nitrogen": {"$gt": 0}}, {"phosphorus": {"$gt": 0}}, {"potassium": {"$gt": 0}}]}
+    ).sort(-models.SoilData.timestamp).limit(20).to_list()
 
     soil_trends = []
     current_problems = []
@@ -51,18 +45,13 @@ async def get_analytics_summary(
             })
     else:
         # Fallback to manual scans if no hardware data
-        stmt_soil = select(models.Scan).where(
+        recent_soil_scans = await models.Scan.find(
             models.Scan.user_id == current_user.id,
             models.Scan.scan_type == "soil"
-        ).order_by(models.Scan.created_at.desc()).limit(7)
-        
-        result_soil = await session.execute(stmt_soil)
-        recent_soil_scans = result_soil.scalars().all()
+        ).sort(-models.Scan.created_at).limit(7).to_list()
         
         for scan in reversed(recent_soil_scans):
-            stmt_res = select(models.AnalysisResult).where(models.AnalysisResult.scan_id == scan.id)
-            result_res = await session.execute(stmt_res)
-            result_obj = result_res.scalars().first()
+            result_obj = await models.AnalysisResult.find_one(models.AnalysisResult.scan_id == scan.id)
             
             if result_obj and result_obj.result_data:
                 data = result_obj.result_data
@@ -75,12 +64,10 @@ async def get_analytics_summary(
                 })
 
     # 2. Disease Stats (Frequency from Leaf Scans)
-    stmt_leaf = select(models.Scan).where(
+    leaf_scans = await models.Scan.find(
         models.Scan.user_id == current_user.id,
         models.Scan.scan_type == "leaf"
-    )
-    result_leaf = await session.execute(stmt_leaf)
-    leaf_scans = result_leaf.scalars().all()
+    ).to_list()
     
     diseases = [s.disease_detected for s in leaf_scans if s.disease_detected]
     disease_counts = Counter(diseases)
@@ -89,12 +76,9 @@ async def get_analytics_summary(
 
     # 3. Recent Activity (Combine Soil and Disease)
     # Fetch recent mixed scans
-    stmt_recent = select(models.Scan).where(
+    recent_scans = await models.Scan.find(
         models.Scan.user_id == current_user.id
-    ).order_by(models.Scan.created_at.desc()).limit(10)
-    
-    result_recent = await session.execute(stmt_recent)
-    recent_scans = result_recent.scalars().all()
+    ).sort(-models.Scan.created_at).limit(10).to_list()
     
     activity = []
     for s in recent_scans:

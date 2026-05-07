@@ -6,9 +6,6 @@ from models import Appointment, User, AppointmentStatus
 from datetime import datetime
 import uuid
 from dependencies import get_current_user
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select, col
-from database import get_session
 
 router = APIRouter()
 
@@ -44,8 +41,7 @@ async def create_order(
 @router.post("/verify_payment")
 async def verify_payment(
     payment: PaymentVerify, 
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    current_user: User = Depends(get_current_user)
 ):
     try:
         # Verify signature
@@ -69,11 +65,9 @@ async def verify_payment(
             order_id=payment.razorpay_order_id,
             status=AppointmentStatus.CONFIRMED.value
         )
-        session.add(new_appointment)
-        await session.commit()
-        await session.refresh(new_appointment)
+        await new_appointment.insert()
         
-        return {"status": "success", "appointment_id": new_appointment.id}
+        return {"status": "success", "appointment_id": str(new_appointment.id)}
         
     except razorpay.errors.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Payment verification failed")
@@ -84,8 +78,7 @@ async def verify_payment(
 @router.post("/book_direct")
 async def book_direct(
     details: dict, 
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    current_user: User = Depends(get_current_user)
 ):
     try:
         new_appointment = Appointment(
@@ -99,24 +92,19 @@ async def book_direct(
             order_id="pay_later",
             status=AppointmentStatus.PENDING.value
         )
-        session.add(new_appointment)
-        await session.commit()
-        await session.refresh(new_appointment)
+        await new_appointment.insert()
         
-        return {"status": "success", "appointment_id": new_appointment.id}
+        return {"status": "success", "appointment_id": str(new_appointment.id)}
     except Exception as e:
         print(f"Booking Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/my_appointments")
 async def get_my_appointments(
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session)
+    current_user: User = Depends(get_current_user)
 ):
-    statement = select(Appointment).where(
+    appointments = await Appointment.find(
         Appointment.user_id == current_user.id
-    ).order_by(Appointment.created_at.desc())
+    ).sort(-Appointment.created_at).to_list()
     
-    result = await session.execute(statement)
-    appointments = result.scalars().all()
     return appointments
